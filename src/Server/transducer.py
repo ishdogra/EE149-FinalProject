@@ -2,7 +2,6 @@
 """
 ADS1115 Pressure Transducer Reader
 Uses SMbus for software I2C on bus 3
-Based on community best practices
 """
 
 import time
@@ -51,7 +50,7 @@ CONFIG_COMP_DIS = 0x0003
 # ADS1115 Class
 # ============================================
 
-class ADS1115:
+class Transducer:
     """
     ADS1115 16-bit ADC driver using SMbus
     Suitable for software I2C buses
@@ -144,107 +143,42 @@ class ADS1115:
         """Close I2C bus"""
         self.bus.close()
 
-# ============================================
-# Pressure Conversion Functions
-# ============================================
+    # ============================================
+    # Pressure Conversion Functions
+    # ============================================
 
-def voltage_to_pressure(voltage):
-    """
-    Converts voltage to pressure
-    
-    """
-    kpa = (0.75 * (voltage - 0.5) - 1) * 100
-    
-    # For vacuum, pressure will be negative (this is absolute pressure) (-100 kPa --> relative)
-    # Return absolute value for vacuum kPa
-    return abs(kpa) if kpa < 0 else 0
+    def voltage_to_abspressure(self, channel):
+        """
+        Converts voltage to pressure
+        
+        """
+        voltage = self.read_voltage(channel)
+        kpa = (0.75 * (voltage - 0.5) - 1) * 100
+        
+        # For vacuum, pressure will be negative (this is absolute pressure) (-100 kPa --> relative)
+        # Return absolute value for vacuum kPa
+        return abs(kpa) if kpa < 0 else 0
 
-# ============================================
-# Main Test Program
-# ============================================
-
-def main():
-    print("\n" + "="*60)
-    print("ADS1115 Pressure Transducer Test (SMbus)")
-    print("="*60)
-    print(f"\nI2C Bus: {ADS1115_BUS}")
-    print(f"Device Address: 0x{ADS1115_ADDRESS:02X}")
-    print(f"Gain: ±4.096V")
-    print("\nReading 4 pressure sensors on channels A0, A1, A2, A3")
-    print("Press Ctrl+C to stop\n")
+    def voltage_to_relpressure(self, channel):
+        """
+        Converts voltage to relative pressure
+        
+        """
+        voltage = self.read_voltage(channel)
+        kpa = ((0.75 * (voltage - 0.5) - 1) * 100 + 100)
+        
+        # For positive pressure, return as is
+        return kpa 
     
-    # Initialize ADS1115
-    try:
-        adc = ADS1115(bus_num=ADS1115_BUS, 
-                      address=ADS1115_ADDRESS,
-                      gain=CONFIG_PGA_4_096V)
-    except Exception as e:
-        print(f"Error initializing ADS1115: {e}")
-        print("\nTroubleshooting:")
-        print("  1. Check wiring (SDA=GPIO5, SCL=GPIO6)")
-        print("  2. Verify pull-up resistors (4.7kΩ)")
-        print("  3. Run: sudo i2cdetect -y 3")
-        print("  4. Check /boot/firmware/config.txt for i2c-gpio overlay")
-        return
-    
-    # Define sensors
-    sensors = [
-        {"channel": 0, "name": "Sensor 1 (A0)", "location": "Front Left"},
-        {"channel": 1, "name": "Sensor 2 (A1)", "location": "Front Right"},
-        {"channel": 2, "name": "Sensor 3 (A2)", "location": "Back Left"},
-        {"channel": 3, "name": "Sensor 4 (A3)", "location": "Back Right"},
-    ]
-    
-    try:
-        iteration = 0
-        while True:
-            print(f"\n{'─' * 60}")
-            print(f"Reading #{iteration+1:4d} - {time.strftime('%H:%M:%S')}")
-            print(f"{'─' * 60}")
-            
-            all_voltages = []
-            all_pressures = []
-            
-            for sensor in sensors:
-                try:
-                    # Read raw ADC value
-                    adc_raw = adc.read_adc(sensor['channel'])
-                    
-                    # Convert to voltage
-                    voltage = adc.read_voltage(sensor['channel']) * 3.128
-                    
-                    # Convert to pressure
-                    pressure = voltage_to_pressure(voltage)
-                    
-                    all_voltages.append(voltage)
-                    all_pressures.append(pressure)
-                    
-                    # Display
-                    print(f"{sensor['name']:16s} ({sensor['location']:12s}): "
-                          f"{adc_raw:6d} LSB  →  {voltage:5.3f}V  →  {pressure:6.1f} kPa")
-                    
-                except Exception as e:
-                    print(f"{sensor['name']:16s}: Error - {e}")
-            
-            # Display summary
-            if all_pressures:
-                avg_pressure = sum(all_pressures) / len(all_pressures)
-                min_pressure = min(all_pressures)
-                max_pressure = max(all_pressures)
-                
-                print(f"\n{'─' * 60}")
-                print(f"Average: {avg_pressure:6.1f} kPa  |  "
-                      f"Range: {min_pressure:6.1f} - {max_pressure:6.1f} kPa")
-            
-            iteration += 1
-            time.sleep(1)
-            
-    except KeyboardInterrupt:
-        print("\n\n" + "="*60)
-        print("Stopped by user")
-        print("="*60)
-    finally:
-        adc.close()
-
-if __name__ == "__main__":
-    main()
+    def read_all_pressures(self):
+        """
+        Read pressures from all 4 channels
+        
+        Returns:
+            List of pressures in kPa for channels 0-3
+        """
+        pressures = []
+        for ch in range(4):
+            pressure = self.voltage_to_abspressure(ch)
+            pressures.append(pressure)
+        return pressures
