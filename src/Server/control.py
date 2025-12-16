@@ -26,16 +26,16 @@ class Control:
         self.timeout = 0
         self.body_height = -25
         self.body_points = [
-            [137.1, -189.4, self.body_height],    # Leg 1 (back right)
-            [137.1, 189.4, self.body_height],   # Leg 3 (front right)
-            [-137.1, 189.4, self.body_height],  # Leg 4 (front left)
-            [-137.1, -189.4, self.body_height],   # Leg 6 (back left)
+            [161, 161, self.body_height],    # Leg 1 (front right)
+            [161, -161, self.body_height],   # Leg 2 (back right)
+            [-161, -161, self.body_height],  # Leg 3 (back left)
+            [-161, 161, self.body_height],   # Leg 4 (front left)
         ]
         calibration_points = self.read_from_txt('point')
-        while len(calibration_points) < 6:
+        while len(calibration_points) < 4:
             calibration_points.append([140, 0, 0])
         # Keep calibration rows for legs 1, 3, 4, and 6 (dropping 2 and 5)
-        self.calibration_leg_positions = [calibration_points[0], calibration_points[2], calibration_points[3], calibration_points[5]]
+        self.calibration_leg_positions = [calibration_points[0], calibration_points[1], calibration_points[2], calibration_points[3]]
         self.leg_positions = [[140, 0, 0] for _ in range(self.leg_count)]
         self.calibration_angles = [[0, 0, 0] for _ in range(self.leg_count)]
         self.current_angles = [[90, 0, 0] for _ in range(self.leg_count)]
@@ -214,21 +214,21 @@ class Control:
             self.set_leg_angles()
 
     def transform_coordinates(self, points):
-        # Leg 1 (back right)
-        self.leg_positions[0][0] = points[0][0] * math.cos(-54 / 180 * math.pi) + points[0][1] * math.sin(-54 / 180 * math.pi) - 94
-        self.leg_positions[0][1] = -points[0][0] * math.sin(-54 / 180 * math.pi) + points[0][1] * math.cos(-54 / 180 * math.pi)
+        # Leg 1 (front right)
+        self.leg_positions[0][0] = points[0][0] * math.cos(45 / 180 * math.pi) + points[0][1] * math.sin(45 / 180 * math.pi) - 108
+        self.leg_positions[0][1] = -points[0][0] * math.sin(45 / 180 * math.pi) + points[0][1] * math.cos(45 / 180 * math.pi) + 15
         self.leg_positions[0][2] = points[0][2] - 14
-        # Leg 3 (front right)
-        self.leg_positions[1][0] = points[1][0] * math.cos(54 / 180 * math.pi) + points[1][1] * math.sin(54 / 180 * math.pi) - 94
-        self.leg_positions[1][1] = -points[1][0] * math.sin(54 / 180 * math.pi) + points[1][1] * math.cos(54 / 180 * math.pi)
+        # Leg 2 (back right)
+        self.leg_positions[1][0] = points[1][0] * math.cos(54 / 180 * math.pi) + points[1][1] * math.sin(54 / 180 * math.pi) - 108
+        self.leg_positions[1][1] = -points[1][0] * math.sin(54 / 180 * math.pi) + points[1][1] * math.cos(54 / 180 * math.pi) - 15
         self.leg_positions[1][2] = points[1][2] - 14
-        # Leg 4 (front left)
-        self.leg_positions[2][0] = points[2][0] * math.cos(126 / 180 * math.pi) + points[2][1] * math.sin(126 / 180 * math.pi) - 94
-        self.leg_positions[2][1] = -points[2][0] * math.sin(126 / 180 * math.pi) + points[2][1] * math.cos(126 / 180 * math.pi)
+        # Leg 3 (back left)
+        self.leg_positions[2][0] = points[2][0] * math.cos(126 / 180 * math.pi) + points[2][1] * math.sin(126 / 180 * math.pi) - 108
+        self.leg_positions[2][1] = -points[2][0] * math.sin(126 / 180 * math.pi) + points[2][1] * math.cos(126 / 180 * math.pi) + 15
         self.leg_positions[2][2] = points[2][2] - 14
-        # Leg 6 (back left)
-        self.leg_positions[3][0] = points[3][0] * math.cos(-126 / 180 * math.pi) + points[3][1] * math.sin(-126 / 180 * math.pi) - 94
-        self.leg_positions[3][1] = -points[3][0] * math.sin(-126 / 180 * math.pi) + points[3][1] * math.cos(-126 / 180 * math.pi)
+        # Leg 4 (front left)
+        self.leg_positions[3][0] = points[3][0] * math.cos(-126 / 180 * math.pi) + points[3][1] * math.sin(-126 / 180 * math.pi) - 108
+        self.leg_positions[3][1] = -points[3][0] * math.sin(-126 / 180 * math.pi) + points[3][1] * math.cos(-126 / 180 * math.pi) - 15
         self.leg_positions[3][2] = points[3][2] - 14
 
     def restrict_value(self, value, min_value, max_value):
@@ -304,7 +304,7 @@ class Control:
             self.transform_coordinates(points)
             self.set_leg_angles()
 
-    def run_gait(self, data, Z=40, F=64):  # Example: data=['CMD_MOVE', '1', '0', '25', '10', '0']
+    def run_gait(self, data, Z=40, F=64):  # Example: data=['CMD_MOVE', '1' gait, '0' x, '25' y, '10' speed, '0' turn angle]
         gait = data[1]
         x = self.restrict_value(int(data[2]), -35, 35)
         y = self.restrict_value(int(data[3]), -35, 35)
@@ -352,18 +352,18 @@ class Control:
         elif gait == "2":
             number = [0, 2, 1, 3]  # ripple order across four legs
             leg_window = max(1, int(F / 4))
-            for i in range(self.leg_count):
-                for j in range(leg_window):
-                    for k in range(self.leg_count):
+            for i in range(self.leg_count): # Move each leg in sequence
+                for j in range(leg_window): # 16 steps per leg
+                    for k in range(self.leg_count): # For each leg
                         if number[i] == k:
-                            if j < max(1, int(F / 12)):
+                            if j < max(1, int(F / 12)): # First 5 steps: lift leg
                                 points[k][2] += 18 * z
-                            elif j < max(1, int(F / 6)):
+                            elif j < max(1, int(F / 6)): # Next 5 steps: move leg forward
                                 points[k][0] += 30 * xy[k][0]
                                 points[k][1] += 30 * xy[k][1]
-                            elif j < leg_window:
+                            elif j < leg_window: # Last 6 steps: lower leg
                                 points[k][2] -= 18 * z
-                        else:
+                        else: # Move other legs backward
                             points[k][0] -= 2 * xy[k][0]
                             points[k][1] -= 2 * xy[k][1]
                     self.transform_coordinates(points)
