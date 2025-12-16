@@ -127,7 +127,8 @@ class Control:
         leg_lengths = [0] * self.leg_count
         for i in range(self.leg_count):
             leg_lengths[i] = math.sqrt(self.leg_positions[i][0] ** 2 + self.leg_positions[i][1] ** 2 + self.leg_positions[i][2] ** 2)
-        for length in leg_lengths:
+        for i, length in enumerate(leg_lengths):
+            print(i, length)
             if length > 248 or length < 90:
                 is_valid = False
         return is_valid
@@ -219,16 +220,16 @@ class Control:
         self.leg_positions[0][1] = -points[0][0] * math.sin(45 / 180 * math.pi) + points[0][1] * math.cos(45 / 180 * math.pi) + 15
         self.leg_positions[0][2] = points[0][2] - 14
         # Leg 2 (back right)
-        self.leg_positions[1][0] = points[1][0] * math.cos(54 / 180 * math.pi) + points[1][1] * math.sin(54 / 180 * math.pi) - 108
-        self.leg_positions[1][1] = -points[1][0] * math.sin(54 / 180 * math.pi) + points[1][1] * math.cos(54 / 180 * math.pi) - 15
+        self.leg_positions[1][0] = points[1][0] * math.cos(-45 / 180 * math.pi) + points[1][1] * math.sin(-45 / 180 * math.pi) - 108
+        self.leg_positions[1][1] = -points[1][0] * math.sin(-45 / 180 * math.pi) + points[1][1] * math.cos(-45 / 180 * math.pi) - 15
         self.leg_positions[1][2] = points[1][2] - 14
         # Leg 3 (back left)
-        self.leg_positions[2][0] = points[2][0] * math.cos(126 / 180 * math.pi) + points[2][1] * math.sin(126 / 180 * math.pi) - 108
-        self.leg_positions[2][1] = -points[2][0] * math.sin(126 / 180 * math.pi) + points[2][1] * math.cos(126 / 180 * math.pi) + 15
+        self.leg_positions[2][0] = points[2][0] * math.cos(-135 / 180 * math.pi) + points[2][1] * math.sin(-135 / 180 * math.pi) - 108
+        self.leg_positions[2][1] = -points[2][0] * math.sin(-135 / 180 * math.pi) + points[2][1] * math.cos(-135 / 180 * math.pi) + 15
         self.leg_positions[2][2] = points[2][2] - 14
         # Leg 4 (front left)
-        self.leg_positions[3][0] = points[3][0] * math.cos(-126 / 180 * math.pi) + points[3][1] * math.sin(-126 / 180 * math.pi) - 108
-        self.leg_positions[3][1] = -points[3][0] * math.sin(-126 / 180 * math.pi) + points[3][1] * math.cos(-126 / 180 * math.pi) - 15
+        self.leg_positions[3][0] = points[3][0] * math.cos(135 / 180 * math.pi) + points[3][1] * math.sin(135 / 180 * math.pi) - 108
+        self.leg_positions[3][1] = -points[3][0] * math.sin(135 / 180 * math.pi) + points[3][1] * math.cos(135 / 180 * math.pi) - 15
         self.leg_positions[3][2] = points[3][2] - 14
 
     def restrict_value(self, value, min_value, max_value):
