@@ -12,7 +12,7 @@ def main():
 
     try:
         for _ in range(5):
-            ctrl.run_gait([cmd.CMD_MOVE, "2", "20", "0", "6", "0"], Z=40)
+            ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "35", "3", "0"])
             time.sleep(0.005)
             Power=adc.read_battery_voltage()
             print ("The battery voltage is "+str(Power)+'\n')
