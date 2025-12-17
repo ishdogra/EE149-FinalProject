@@ -5,17 +5,31 @@ import copy
 import threading
 import numpy as np
 from gpiozero import OutputDevice
+from typing import Dict, List, Mapping, Optional, Tuple
 
+from pnuematics import PnuematicsController
+from transducer import Transducer
 from pid import Incremental_PID
 from command import COMMAND as cmd
 from imu import IMU
 from servo import Servo
 
+# Control (src/Server/control.py) leg indices are:
+#   0: front right, 1: back right, 2: back left, 3: front left
+DEFAULT_LEG_TO_VALVE: Mapping[int, int] = {
+    0: 2,  # front right -> valve 2
+    1: 4,  # back right  -> valve 4
+    2: 3,  # back left   -> valve 3
+    3: 1,  # front left  -> valve 1
+}
 
 class Control:
     def __init__(self):
         self.imu = IMU()
         self.servo = Servo()
+        self.pneumatics = PnuematicsController()
+        self.transducer = Transducer()
+        self.leg_valve = dict(DEFAULT_LEG_TO_VALVE)
         self.leg_count = 4
         self.movement_flag = 0x01
         self.relaxation_flag = False
@@ -305,7 +319,7 @@ class Control:
             self.transform_coordinates(points)
             self.set_leg_angles()
 
-    def run_gait(self, data, Z=40, F=64):  # Example: data=['CMD_MOVE', '1' gait, '0' x, '25' y, '10' speed, '0' turn angle]
+    def run_gait(self, data, Z=40, F=64):  # Example: data=['CMD_MOVE', '1' gait, '0' x, '25' y, '10' speed, '0' turn angle, '0' crawl]
         gait = data[1]
         x = self.restrict_value(int(data[2]), -35, 35)
         y = self.restrict_value(int(data[3]), -35, 35)
@@ -314,6 +328,7 @@ class Control:
         else:
             F = round(self.map_value(int(data[4]), 2, 10, 171, 45))
         angle = int(data[5])
+        crawl = bool(int(data[6]) == 1) if len(data) > 6 else False
         z = Z / F
         delay = 0.01
         points = copy.deepcopy(self.body_points)
@@ -353,7 +368,12 @@ class Control:
         elif gait == "2":
             number = [0, 2, 1, 3]  # ripple order across four legs
             leg_window = max(1, int(F / 4))
-            for i in range(self.leg_count): # Move each leg in sequence
+            for i in range(self.leg_count): # Leg that lifts
+                if crawl:
+                    # Lift leg and deactivate vacuum, wait til pressure equalized
+                    self.pneumatics.close_valve(self.leg_valve[number[i]])
+                    while self.transducer.voltage_to_relpressure([number[i]]) < -5: # neg pressure = vacuum
+                        time.sleep(0.01)
                 for j in range(leg_window): # 16 steps per leg
                     for k in range(self.leg_count): # For each leg
                         if number[i] == k:
@@ -370,6 +390,11 @@ class Control:
                     self.transform_coordinates(points)
                     self.set_leg_angles()
                     time.sleep(delay)
+                if crawl:
+                    # Lower leg and activate vacuum, wait til suction achieved
+                    self.pneumatics.open_valve(self.leg_valve[number[i]])
+                    while self.transducer.voltage_to_relpressure([number[i]]) > -50: 
+                        time.sleep(0.01)
 
 if __name__ == '__main__':
     pass
