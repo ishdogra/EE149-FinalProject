@@ -9,18 +9,18 @@ from typing import Dict, List, Mapping, Optional, Tuple
 
 # Valve names/locations (customize for your robot)
 VALVE_NAMES = {
-    1: "Front Left",
-    2: "Front Right",
+    1: "Front Right",
+    2: "Back Right",
     3: "Back Left",
-    4: "Back Right",
+    4: "Front Left",
 }
 
 # GPIO pin assignments (BCM numbering)
 DEFAULT_VALVE_PINS: Mapping[int, int] = {
-    1: 13,  # Front Left
-    2: 19,  # Front Right
-    3: 16,  # Back Left
-    4: 20,  # Back Right
+    1: 13,  
+    2: 19,  
+    3: 16,  
+    4: 20,  
 }
 
 class PnuematicsController:
@@ -94,6 +94,12 @@ class PnuematicsController:
         for pin in self.valve_pins.values():
             GPIO.output(pin, GPIO.HIGH)
         print("✓ All valves OPENED")
+    
+    def open_all_except(self, valve_num):
+        for valve in self.valve_pins.keys():
+            if valve == valve_num:
+                pass
+            self.open_valve(valve)
 
     def get_valve_state(self, valve_num):
         """

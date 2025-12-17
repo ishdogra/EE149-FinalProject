@@ -15,6 +15,13 @@ from adc import ADC
 import sys
 from typing import Dict, List, Mapping, Optional, Tuple
 
+STATE_MAP = {
+    'R': 'RELAXED',
+    'S': 'STATIONED',
+    'W': 'WALKING',
+    'C': 'CLIMBING',
+}
+
 class StateMachine:
     def __init__(self):
         self.states = ['RELAXED', 'STATIONED', 'WALKING', 'CLIMBING']
@@ -81,7 +88,7 @@ class StateMachine:
         self.servo.relax()
 
     def stationed_actions(self):
-        self.ctrl.command_queue = [cmd.CMD_POSITION, "0", "0", "10"]
+        self.ctrl.command_queue = [cmd.CMD_POSITION, "0", "0", "15"]
 
     def walking_actions(self):  
         self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "3", "0", "0"])
@@ -103,7 +110,7 @@ if __name__ == '__main__':
     state_thread.start()
 
     print("State machine started.")
-    print("Type a state name (RELAXED, STATIONED, WALKING, CLIMBING) or 'q' to quit.")
+    print("Type a state name (r, s, w, c) or 'q' to quit.")
 
     try:
         while True:
@@ -116,12 +123,14 @@ if __name__ == '__main__':
                 break
 
             try:
-                state_machine.transition_to(user_cmd)
+                state_machine.transition_to(STATE_MAP[user_cmd])
             except ValueError as e:
                 print(f"Invalid state: {user_cmd}")
-                print("Valid states: RELAXED, STATIONED, WALKING, CLIMBING")
+                print("Valid states: r, s, w, c")
 
     except KeyboardInterrupt:
         state_machine.ctrl.pneumatics.close_all_valves()  # Ensure safe state before exiting
         state_machine.servo.relax()
         print("\nExiting state machine.")
+        exit()
+

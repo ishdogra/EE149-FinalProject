@@ -17,10 +17,10 @@ from servo import Servo
 # Control (src/Server/control.py) leg indices are:
 #   0: front right, 1: back right, 2: back left, 3: front left
 DEFAULT_LEG_TO_VALVE: Mapping[int, int] = {
-    0: 1,  # front right -> valve 2
-    1: 2,  # back right  -> valve 4
-    2: 3,  # back left   -> valve 3
-    3: 4,  # front left  -> valve 1
+    0: 1,  # front right -> valve 1
+    1: 2,  # back right  -> valve 2
+    2: 3,  # back left  -> valve 3
+    3: 4,  # front left  -> valve 4
 }
 
 class Control:
@@ -366,8 +366,9 @@ class Control:
                 time.sleep(delay)
         elif gait == "2":
             number = [0, 2, 1, 3]  # ripple order across four legs
+            # number = [0, 1, 2, 3]
             leg_window = max(1, int(F / 4))
-            for i in range(self.leg_count): # Leg that lifts
+            for i in range(self.leg_count): # 1-4 legs
                 if crawl:
                     # Lift leg and deactivate vacuum, wait til pressure equalized
                     self.pneumatics.close_valve(self.leg_valve[number[i]])
@@ -376,6 +377,7 @@ class Control:
                         valve_state = []
                         for x in range(1, 5):
                             valve_state.append(self.pneumatics.get_valve_state(x))
+                        print("Waiting for depressurization: ", number[i])
                         print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
                         time.sleep(0.01)
                 for j in range(leg_window): # 16 steps per leg
@@ -384,27 +386,36 @@ class Control:
                             if j < max(1, int(F / 12)): # First 5 steps: lift leg
                                 points[k][2] += 18 * z
                             elif j < max(1, int(F / 6)): # Next 5 steps: move leg forward
-                                points[k][0] += 30 * xy[k][0]
-                                points[k][1] += 30 * xy[k][1]
+                                points[k][0] += 10 * xy[k][0]
+                                points[k][1] += 10 * xy[k][1]
                             elif j < leg_window: # Last 6 steps: lower leg
-                                points[k][2] -= 18 * z
+                                points[k][2] -= 22 * z
                         else: # Move other legs backward
-                            points[k][0] -= 2 * xy[k][0]
-                            points[k][1] -= 2 * xy[k][1]
+                            points[k][0] -= 0.66 * xy[k][0]
+                            points[k][1] -= 0.66 * xy[k][1]
                     self.transform_coordinates(points)
                     self.set_leg_angles()
                     time.sleep(delay)
                 if crawl:
+                    self.pneumatics.close_all_valves()
                     # Lower leg and activate vacuum, wait til suction achieved
                     self.pneumatics.open_valve(self.leg_valve[number[i]])
                     while self.transducer.voltage_to_relpressure(number[i]) > -40: 
                         pressures = self.transducer.read_all_pressures()
+                        pressures[number[i]] = 0
+                        if min(pressures) > -40:
+                            self.pneumatics.close_valve(self.leg_valve[number[i]])
+                            self.pneumatics.open_all_except(number[i])
+                        else:
+                            self.pneumatics.close_all_valves()
+                            self.pneumatics.open_valve(self.leg_valve[number[i]])
                         valve_state = []
                         for x in range(1, 5):
                             valve_state.append(self.pneumatics.get_valve_state(x))
                         print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
                         time.sleep(0.01)
-
+                    self.pneumatics.open_all_valves()
+    
 if __name__ == '__main__':
     pass
     

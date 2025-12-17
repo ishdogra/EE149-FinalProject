@@ -21,10 +21,10 @@ VALVE_PINS = {
 
 # Valve names/locations (customize for your robot)
 VALVE_NAMES = {
-    1: "Front Left",
-    2: "Front Right",
+    1: "Front Right",
+    2: "Back Right",
     3: "Back Left",
-    4: "Back Right",
+    4: "Front Left",
 }
 
 # ============================================
@@ -124,7 +124,7 @@ def test_individual_valves():
     
     for valve_num in sorted(VALVE_PINS.keys()):
         open_valve(valve_num)
-        time.sleep(2)
+        time.sleep(10)
         close_valve(valve_num)
         time.sleep(0.5)
     
