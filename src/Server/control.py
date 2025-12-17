@@ -23,6 +23,13 @@ DEFAULT_LEG_TO_VALVE: Mapping[int, int] = {
     3: 4,  # front left  -> valve 4
 }
 
+DEFAULT_LEG_TO_SERVO: Mapping[int, int] = {
+    0: 13,  # front right -> valve 1
+    1: 31,  # back right  -> valve 2
+    2: 27,  # back left  -> valve 3
+    3: 18,  # front left  -> valve 4
+}
+
 class Control:
     def __init__(self):
         # self.imu = IMU()
@@ -30,6 +37,7 @@ class Control:
         self.pneumatics = PnuematicsController()
         self.transducer = Transducer()
         self.leg_valve = dict(DEFAULT_LEG_TO_VALVE)
+        self.leg_servo = dict(DEFAULT_LEG_TO_SERVO)
         self.leg_count = 4
         self.movement_flag = 0x01
         self.relaxation_flag = False
@@ -372,6 +380,7 @@ class Control:
                 if crawl:
                     # Lift leg and deactivate vacuum, wait til pressure equalized
                     self.pneumatics.close_valve(self.leg_valve[number[i]])
+                    servo_actuation_count = 0
                     while self.transducer.voltage_to_relpressure(number[i]) < -5: # neg pressure = vacuum
                         pressures = self.transducer.read_all_pressures()
                         valve_state = []
@@ -379,7 +388,12 @@ class Control:
                             valve_state.append(self.pneumatics.get_valve_state(x))
                         print("Waiting for depressurization: ", number[i])
                         print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
+                        if (servo_actuation_count % 5 == 0):
+                            print("Lifting leg for depresure: ", number[i])
+                            self.servo.set_servo_angle(self.leg_servo[number[i]], self.current_angles[number[i]][2] + 1)
+                            self.current_angles[number[i]][2] += 1
                         time.sleep(0.01)
+                        servo_actuation_count += 1
                 for j in range(leg_window): # 16 steps per leg
                     for k in range(self.leg_count): # For each leg
                         if number[i] == k:
