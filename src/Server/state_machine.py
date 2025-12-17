@@ -94,9 +94,8 @@ class StateMachine:
         self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "3", "0", "0"])
 
     def climbing_actions(self):
-        
-        
         self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "3", "0", "1"])
+        
     
 
 if __name__ == '__main__':

@@ -24,10 +24,10 @@ DEFAULT_LEG_TO_VALVE: Mapping[int, int] = {
 }
 
 DEFAULT_LEG_TO_SERVO: Mapping[int, int] = {
-    0: 13,  # front right -> valve 1
-    1: 31,  # back right  -> valve 2
-    2: 27,  # back left  -> valve 3
-    3: 18,  # front left  -> valve 4
+    0: 14,  # front right -> valve 1
+    1: 8,  # back right  -> valve 2
+    2: 23,  # back left  -> valve 3
+    3: 17,  # front left  -> valve 4
 }
 
 class Control:
@@ -381,19 +381,20 @@ class Control:
                     # Lift leg and deactivate vacuum, wait til pressure equalized
                     self.pneumatics.close_valve(self.leg_valve[number[i]])
                     servo_actuation_count = 0
-                    while self.transducer.voltage_to_relpressure(number[i]) < -5: # neg pressure = vacuum
+                    while self.transducer.voltage_to_relpressure(number[i]) < -3: # neg pressure = vacuum
                         pressures = self.transducer.read_all_pressures()
                         valve_state = []
                         for x in range(1, 5):
                             valve_state.append(self.pneumatics.get_valve_state(x))
                         print("Waiting for depressurization: ", number[i])
                         print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
-                        if (servo_actuation_count % 5 == 0):
+                        if (servo_actuation_count % 20 == 0):
                             print("Lifting leg for depresure: ", number[i])
-                            self.servo.set_servo_angle(self.leg_servo[number[i]], self.current_angles[number[i]][2] + 1)
-                            self.current_angles[number[i]][2] += 1
+                            self.servo.set_servo_angle(self.leg_servo[number[i]], self.current_angles[number[i]][2] + 0.5)
+                            self.current_angles[number[i]][2] += 0.5
                         time.sleep(0.01)
-                        servo_actuation_count += 1
+                        servo_actuation_count += 0.5
+                    time.sleep(1)
                 for j in range(leg_window): # 16 steps per leg
                     for k in range(self.leg_count): # For each leg
                         if number[i] == k:
@@ -416,19 +417,22 @@ class Control:
                     self.pneumatics.open_valve(self.leg_valve[number[i]])
                     while self.transducer.voltage_to_relpressure(number[i]) > -40: 
                         pressures = self.transducer.read_all_pressures()
-                        pressures[number[i]] = 0
-                        if min(pressures) > -40:
-                            self.pneumatics.close_valve(self.leg_valve[number[i]])
-                            self.pneumatics.open_all_except(number[i])
-                        else:
-                            self.pneumatics.close_all_valves()
-                            self.pneumatics.open_valve(self.leg_valve[number[i]])
+                        self.servo.set_servo_angle(self.leg_servo[number[i]], self.current_angles[number[i]][2] - 0.5)
+                        self.current_angles[number[i]][2] -= 0.5
+                        # pressures[number[i]] = 0
+                        # if min(pressures) > -40:
+                        #     self.pneumatics.close_valve(self.leg_valve[number[i]])
+                        #     self.pneumatics.open_all_except(number[i])
+                        # else:
+                        #     self.pneumatics.close_all_valves()
+                        #     self.pneumatics.open_valve(self.leg_valve[number[i]])
                         valve_state = []
                         for x in range(1, 5):
                             valve_state.append(self.pneumatics.get_valve_state(x))
                         print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
                         time.sleep(0.01)
                     self.pneumatics.open_all_valves()
+                    self.command_queue = [cmd.CMD_POSITION, "0", "0", "15"]
     
 if __name__ == '__main__':
     pass
