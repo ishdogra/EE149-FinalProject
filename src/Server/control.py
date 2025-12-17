@@ -17,15 +17,15 @@ from servo import Servo
 # Control (src/Server/control.py) leg indices are:
 #   0: front right, 1: back right, 2: back left, 3: front left
 DEFAULT_LEG_TO_VALVE: Mapping[int, int] = {
-    0: 2,  # front right -> valve 2
-    1: 4,  # back right  -> valve 4
+    0: 1,  # front right -> valve 2
+    1: 2,  # back right  -> valve 4
     2: 3,  # back left   -> valve 3
-    3: 1,  # front left  -> valve 1
+    3: 4,  # front left  -> valve 1
 }
 
 class Control:
     def __init__(self):
-        self.imu = IMU()
+        # self.imu = IMU()
         self.servo = Servo()
         self.pneumatics = PnuematicsController()
         self.transducer = Transducer()
@@ -142,7 +142,6 @@ class Control:
         for i in range(self.leg_count):
             leg_lengths[i] = math.sqrt(self.leg_positions[i][0] ** 2 + self.leg_positions[i][1] ** 2 + self.leg_positions[i][2] ** 2)
         for i, length in enumerate(leg_lengths):
-            print(i, length)
             if length > 248 or length < 90:
                 is_valid = False
         return is_valid
@@ -188,7 +187,7 @@ class Control:
                     if self.status_flag != 0x04:
                         self.relax(False)
                     self.status_flag = 0x04
-                    self.imu6050()
+                    # self.imu6050()
             elif cmd.CMD_CALIBRATION in self.command_queue:
                 self.timeout = 0
                 self.calibrate()
@@ -299,25 +298,25 @@ class Control:
             foot_positions[i][2] = ab[2, i]
         return foot_positions
 
-    def imu6050(self):
-        old_roll = 0
-        old_pitch = 0
-        points = self.calculate_posture_balance(0, 0, 0)
-        self.transform_coordinates(points)
-        self.set_leg_angles()
-        time.sleep(2)
-        self.imu.Error_value_accel_data, self.imu.Error_value_gyro_data = self.imu.calculate_average_sensor_data()
-        time.sleep(1)
-        while True:
-            if self.command_queue[0] != "":
-                break
-            time.sleep(0.02)
-            roll, pitch, yaw = self.imu.update_imu_state()
-            roll = self.pid_controller.pid_calculate(roll)
-            pitch = self.pid_controller.pid_calculate(pitch)
-            points = self.calculate_posture_balance(roll, pitch, 0)
-            self.transform_coordinates(points)
-            self.set_leg_angles()
+    # def imu6050(self):
+    #     old_roll = 0
+    #     old_pitch = 0
+    #     points = self.calculate_posture_balance(0, 0, 0)
+    #     self.transform_coordinates(points)
+    #     self.set_leg_angles()
+    #     time.sleep(2)
+    #     self.imu.Error_value_accel_data, self.imu.Error_value_gyro_data = self.imu.calculate_average_sensor_data()
+    #     time.sleep(1)
+    #     while True:
+    #         if self.command_queue[0] != "":
+    #             break
+    #         time.sleep(0.02)
+    #         roll, pitch, yaw = self.imu.update_imu_state()
+    #         roll = self.pid_controller.pid_calculate(roll)
+    #         pitch = self.pid_controller.pid_calculate(pitch)
+    #         points = self.calculate_posture_balance(roll, pitch, 0)
+    #         self.transform_coordinates(points)
+    #         self.set_leg_angles()
 
     def run_gait(self, data, Z=40, F=64):  # Example: data=['CMD_MOVE', '1' gait, '0' x, '25' y, '10' speed, '0' turn angle, '0' crawl]
         gait = data[1]
@@ -372,7 +371,12 @@ class Control:
                 if crawl:
                     # Lift leg and deactivate vacuum, wait til pressure equalized
                     self.pneumatics.close_valve(self.leg_valve[number[i]])
-                    while self.transducer.voltage_to_relpressure([number[i]]) < -5: # neg pressure = vacuum
+                    while self.transducer.voltage_to_relpressure(number[i]) < -5: # neg pressure = vacuum
+                        pressures = self.transducer.read_all_pressures()
+                        valve_state = []
+                        for x in range(1, 5):
+                            valve_state.append(self.pneumatics.get_valve_state(x))
+                        print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
                         time.sleep(0.01)
                 for j in range(leg_window): # 16 steps per leg
                     for k in range(self.leg_count): # For each leg
@@ -393,7 +397,12 @@ class Control:
                 if crawl:
                     # Lower leg and activate vacuum, wait til suction achieved
                     self.pneumatics.open_valve(self.leg_valve[number[i]])
-                    while self.transducer.voltage_to_relpressure([number[i]]) > -50: 
+                    while self.transducer.voltage_to_relpressure(number[i]) > -40: 
+                        pressures = self.transducer.read_all_pressures()
+                        valve_state = []
+                        for x in range(1, 5):
+                            valve_state.append(self.pneumatics.get_valve_state(x))
+                        print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
                         time.sleep(0.01)
 
 if __name__ == '__main__':

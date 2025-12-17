@@ -139,7 +139,7 @@ class Transducer:
             Voltage in volts
         """
         adc_value = self.read_adc(channel)
-        return adc_value * self.volts_per_bit * 3.128
+        return adc_value * self.volts_per_bit * 3.128 
     
     def close(self):
         """Close I2C bus"""
@@ -149,21 +149,6 @@ class Transducer:
     # Pressure Conversion Functions
     # ============================================
 
-<<<<<<< HEAD
-    # def voltage_to_abspressure(self, channel):
-    #     """
-    #     Converts voltage to pressure
-        
-    #     """
-    #     voltage = self.read_voltage(channel)
-    #     kpa = (0.75 * (voltage - 0.5) - 1) * 100
-        
-    #     # For vacuum, pressure will be negative (this is absolute pressure) (-100 kPa --> relative)
-    #     # Return absolute value for vacuum kPa
-    #     return abs(kpa) if kpa < 0 else 0
-
-=======
->>>>>>> 2264c45b62fcde821384b28fd8e100f155394325
     def voltage_to_relpressure(self, channel):
         """
         Converts voltage to relative pressure
@@ -194,11 +179,7 @@ def main():
     print("="*60)
     print(f"\nI2C Bus: {ADS1115_BUS}")
     print(f"Device Address: 0x{ADS1115_ADDRESS:02X}")
-<<<<<<< HEAD
-    print(f"Gain: �4.096V")
-=======
     print(f"Gain: ±4.096V")
->>>>>>> 2264c45b62fcde821384b28fd8e100f155394325
     print("\nReading 4 pressure sensors on channels A0, A1, A2, A3")
     print("Press Ctrl+C to stop\n")
     # Initialize ADS1115
@@ -219,11 +200,7 @@ def main():
             print(f"Pressures (kPa): A0={pressures[0]:6.2f}, A1={pressures[1]:6.2f}, A2={pressures[2]:6.2f}, A3={pressures[3]:6.2f}")
             time.sleep(1.0)
     except KeyboardInterrupt:
-<<<<<<< HEAD
-        print("\n? Exiting pressure read loop")
-=======
         print("\n✓ Exiting pressure read loop")
->>>>>>> 2264c45b62fcde821384b28fd8e100f155394325
     finally:
         adc.close() 
 

@@ -69,6 +69,7 @@ class StateMachine:
             self.ctrl.pneumatics.close_all_valves()
         elif state == 'STATIONED':
             self.ctrl.pneumatics.open_all_valves()
+            pass
         elif state == 'WALKING':
             pass
         elif state == 'CLIMBING':
@@ -83,10 +84,13 @@ class StateMachine:
         self.ctrl.command_queue = [cmd.CMD_POSITION, "0", "0", "10"]
 
     def walking_actions(self):  
-        self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "8", "0", "0"])
+        self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "3", "0", "0"])
 
     def climbing_actions(self):
-        self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "8", "0", "1"])
+        
+        
+        self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "3", "0", "1"])
+    
 
 if __name__ == '__main__':
     state_machine = StateMachine()
@@ -118,4 +122,6 @@ if __name__ == '__main__':
                 print("Valid states: RELAXED, STATIONED, WALKING, CLIMBING")
 
     except KeyboardInterrupt:
+        state_machine.ctrl.pneumatics.close_all_valves()  # Ensure safe state before exiting
+        state_machine.servo.relax()
         print("\nExiting state machine.")
