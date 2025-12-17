@@ -6,8 +6,8 @@ import numpy as np
 from gpiozero import OutputDevice
 import RPi.GPIO as GPIO
 
-from pnuematics import PnuematicsController
-from transducer import Transducer
+# from pnuematics import PnuematicsController
+# from transducer import Transducer
 from servo import Servo
 from control import Control
 from command import COMMAND as cmd
@@ -15,25 +15,16 @@ from adc import ADC
 import sys
 from typing import Dict, List, Mapping, Optional, Tuple
 
-
-# Control (src/Server/control.py) leg indices are:
-#   0: front right, 1: back right, 2: back left, 3: front left
-DEFAULT_LEG_TO_VALVE: Mapping[int, int] = {
-    0: 2,  # front right -> valve 2
-    1: 4,  # back right  -> valve 4
-    2: 3,  # back left   -> valve 3
-    3: 1,  # front left  -> valve 1
-}
-
 class StateMachine:
     def __init__(self):
         self.states = ['RELAXED', 'STATIONED', 'WALKING', 'CLIMBING']
         self.current_state = 'RELAXED'
+        self.last_state = None
         self.state_lock = threading.Lock()
         self.ctrl = Control()
         self.servo = Servo()
-        self.pneumatics = PnuematicsController()
-        self.transducer = Transducer()
+        # self.pneumatics = PnuematicsController()
+        # self.transducer = Transducer()
         self.adc = ADC() # Battery voltage reader. Eventually add functionality to enter emergency mode on low battery.
 
         self.ctrl.condition_thread.start()
@@ -52,9 +43,14 @@ class StateMachine:
         
     def run_state_actions(self):
         while True:
-            with self.state_lock:
-                state = self.current_state
-            
+            state = self.get_current_state()
+
+            # Run "on-enter" actions once per transition
+            if state != self.last_state:
+                self.on_enter(state)
+                self.last_state = state
+
+            # Run actions 
             if state == 'RELAXED':
                 self.relaxed_actions()
             elif state == 'STATIONED':
@@ -63,37 +59,34 @@ class StateMachine:
                 self.walking_actions()
             elif state == 'CLIMBING':
                 self.climbing_actions()
-            
+
             time.sleep(0.1)
 
+    def on_enter(self, state):
+        print(f"\n[STATE] Entered {state}")
+        
+        if state == 'RELAXED':
+            self.ctrl.pneumatics.close_all_valves()
+        elif state == 'STATIONED':
+            self.ctrl.pneumatics.open_all_valves()
+        elif state == 'WALKING':
+            pass
+        elif state == 'CLIMBING':
+            pass
+
+        time.sleep(0.1)
+
     def relaxed_actions(self):
-        # print("Entered RELAXED state.")
-        # Add RELAXED state specific actions here
-        if max(self.transducer.read_all_pressures()) > 0.5:
-            self.pneumatics.close_all_valves()
-            print("Releasing pressure to reach RELAXED state...")
         self.servo.relax()
-        print("Robot is now RELAXED.")
 
     def stationed_actions(self):
-        # print("Entered STATIONED state.")
-        # Add STATIONED state specific actions here
         self.ctrl.command_queue = [cmd.CMD_POSITION, "0", "0", "10"]
-        if min(self.transducer.read_all_pressures()) < 75.0:
-            self.pneumatics.open_all_valves()
-            print("Building pressure to reach STATIONED state...")
-        print("Robot is now STATIONED.")
 
     def walking_actions(self):  
-        # print("Entered WALKING state.")
-        # Add WALKING state specific actions here
-        self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "8", "0"])
+        self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "8", "0", "0"])
 
     def climbing_actions(self):
-        # print("Entered CLIMBING state.")
-        # Add CLIMBING state specific actions here
-        pass
-
+        self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "8", "0", "1"])
 
 if __name__ == '__main__':
     state_machine = StateMachine()
@@ -113,7 +106,8 @@ if __name__ == '__main__':
             user_cmd = input(">> ").strip().upper()
 
             if user_cmd in ('Q', 'QUIT', 'EXIT'):
-                state_machine.relaxed_actions()  # Ensure safe state before exiting
+                state_machine.ctrl.pneumatics.close_all_valves()  # Ensure safe state before exiting
+                state_machine.servo.relax()
                 print("Exiting state machine.")
                 break
 

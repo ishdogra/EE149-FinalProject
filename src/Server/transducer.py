@@ -147,18 +147,6 @@ class Transducer:
     # Pressure Conversion Functions
     # ============================================
 
-    def voltage_to_abspressure(self, channel):
-        """
-        Converts voltage to pressure
-        
-        """
-        voltage = self.read_voltage(channel)
-        kpa = (0.75 * (voltage - 0.5) - 1) * 100
-        
-        # For vacuum, pressure will be negative (this is absolute pressure) (-100 kPa --> relative)
-        # Return absolute value for vacuum kPa
-        return abs(kpa) if kpa < 0 else 0
-
     def voltage_to_relpressure(self, channel):
         """
         Converts voltage to relative pressure
