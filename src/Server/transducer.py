@@ -182,3 +182,37 @@ class Transducer:
             pressure = self.voltage_to_abspressure(ch)
             pressures.append(pressure)
         return pressures
+    
+def main():
+    print("\n" + "="*60)
+    print("ADS1115 Pressure Transducer Test (SMbus)")
+    print("="*60)
+    print(f"\nI2C Bus: {ADS1115_BUS}")
+    print(f"Device Address: 0x{ADS1115_ADDRESS:02X}")
+    print(f"Gain: ±4.096V")
+    print("\nReading 4 pressure sensors on channels A0, A1, A2, A3")
+    print("Press Ctrl+C to stop\n")
+    # Initialize ADS1115
+    try:
+        adc = Transducer(bus_num=ADS1115_BUS, 
+                      address=ADS1115_ADDRESS,
+                      gain=CONFIG_PGA_4_096V)
+    except Exception as e:
+        print(f"Error initializing ADS1115: {e}")
+        print("\nTroubleshooting:")
+        print("- Ensure the ADS1115 is connected to the correct I2C bus.")
+        print("- Verify the device address matches the hardware setup.")
+        print("- Check wiring and power to the ADS1115 module.")
+        return
+    try:
+        while True:
+            pressures = adc.read_all_pressures()
+            print(f"Pressures (kPa): A0={pressures[0]:6.2f}, A1={pressures[1]:6.2f}, A2={pressures[2]:6.2f}, A3={pressures[3]:6.2f}")
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        print("\n✓ Exiting pressure read loop")
+    finally:
+        adc.close() 
+
+if __name__ == '__main__':
+    main()
