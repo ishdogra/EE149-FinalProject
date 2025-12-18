@@ -91,10 +91,10 @@ class StateMachine:
         self.ctrl.command_queue = [cmd.CMD_POSITION, "0", "0", "15"]
 
     def walking_actions(self):  
-        self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "3", "0", "0"])
+        self.ctrl.run_gait([cmd.CMD_MOVE, "3", "0", "20", "3", "0", "0"])
 
     def climbing_actions(self):
-        self.ctrl.run_gait([cmd.CMD_MOVE, "2", "0", "20", "3", "0", "1"])
+        self.ctrl.run_gait([cmd.CMD_MOVE, "3", "0", "20", "3", "0", "1"])
         
     
 

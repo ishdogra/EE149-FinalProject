@@ -433,7 +433,54 @@ class Control:
                         time.sleep(0.01)
                     self.pneumatics.open_all_valves()
                     self.command_queue = [cmd.CMD_POSITION, "0", "0", "15"]
-    
-if __name__ == '__main__':
-    pass
-    
+        elif gait == "3": #2 Front 2 Back Gait Unilateral Scheme
+            number = [0, 2, 1, 3]                # ripple order
+            leg_window = max(1, int(F / 4))
+            # channel mapping (inner/hip unused)
+            lift_ch = {0: 17, 1: 23, 2: 8,  3: 14}   # lift/lower servo
+            ext_ch  = {0: 18, 1: 27, 2: 31, 3: 13}   # extend/reach servo
+
+            # motion parameters (tune)
+            EXTEND_DELTA = 25        # degrees extend
+            LIFT_DELTA = 25          # degrees lift
+            EXTEND_SPEED = 20.0      # deg/sec for extension
+            LIFT_SPEED = 20.0        # deg/sec for lift/lower
+            HOLD = 1              # seconds to wait between phases
+
+            # per-leg direction multipliers to correct inverted servos, reaches out
+            lift_dir = {0: -1, 1: -1, 2: 1, 3: 1} 
+            ext_dir  = {0: 1, 1: 1, 2: -1,  3: -1} 
+
+            # read current servo positions (fallback to 90°)
+            svc_pos = {}
+            base_angles = getattr(self.servo, "current_angles", [90.0] * 32)
+            for ch in set(list(lift_ch.values()) + list(ext_ch.values())):
+                svc_pos[ch] = float(base_angles[ch])
+
+            # For each leg in ripple order do: lift -> extend -> lower -> retract
+            for i in range(self.leg_count):
+                leg = number[i]
+                lch = lift_ch[leg]
+                ech = ext_ch[leg]
+                orig_l = svc_pos[lch]
+                orig_e = svc_pos[ech]
+
+                # 1) lift up (apply per-leg direction)
+                self.servo.set_servo_angle(lch, orig_l + lift_dir[leg] * LIFT_DELTA, speed=LIFT_SPEED)
+                time.sleep(HOLD)
+
+                # 2) extend (reach forward)
+                self.servo.set_servo_angle(ech, orig_e + ext_dir[leg] * EXTEND_DELTA, speed=EXTEND_SPEED)
+                time.sleep(HOLD)
+
+                # 3) lower back down (return to original lift angle -> "grab")
+                self.servo.set_servo_angle(lch, orig_l, speed=LIFT_SPEED)
+                time.sleep(HOLD)
+
+                # 4) retract extension back to original
+                self.servo.set_servo_angle(ech, orig_e, speed=EXTEND_SPEED)
+                time.sleep(HOLD)
+
+                # update stored positions
+                svc_pos[lch] = orig_l
+                svc_pos[ech] = orig_e
