@@ -652,14 +652,19 @@ class TwoFTwoBActuator:
 
                 # Step 1: PNEUMATICS DETTACH
                 self.pneumatics.close_valve(self.leg_valve[leg])
-                # while self.transducer.voltage_to_relpressure(leg) < -3: # neg pressure = vacuum
-                pressures = self.transducer.read_all_pressures()
-                valve_state = []
-                for x in range(1, 5):
-                    valve_state.append(self.pneumatics.get_valve_state(x))
-                print("Waiting for depressurization: ", leg)
-                print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
-                    # time.sleep(0.01)
+                count = 0
+                while self.transducer.voltage_to_relpressure(leg) < -3 and count > 3: # neg pressure = vacuum
+                    if self.transducer.voltage_to_relpressure(leg) < -3:
+                        count += 1
+                    else:
+                        count == 0
+                    pressures = self.transducer.read_all_pressures()
+                    valve_state = []
+                    for x in range(1, 5):
+                        valve_state.append(self.pneumatics.get_valve_state(x))
+                    print("Waiting for depressurization: ", leg)
+                    print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
+                    time.sleep(0.01)
                 time.sleep(0.1)
 
                 # Step 2: Lift leg
@@ -688,14 +693,14 @@ class TwoFTwoBActuator:
 
                 # Step 5: PNEUMATICS ATTACH
                 self.pneumatics.open_valve(self.leg_valve[leg])
-                # while self.transducer.voltage_to_relpressure(leg) > -40: # neg pressure = vacuum
-                pressures = self.transducer.read_all_pressures()
-                valve_state = []
-                for x in range(1, 5):
-                    valve_state.append(self.pneumatics.get_valve_state(x))
-                print("Waiting for depressurization: ", leg)
-                print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
-                    # time.sleep(0.01)
+                while self.transducer.voltage_to_relpressure(leg) > -40: # neg pressure = vacuum
+                    pressures = self.transducer.read_all_pressures()
+                    valve_state = []
+                    for x in range(1, 5):
+                        valve_state.append(self.pneumatics.get_valve_state(x))
+                    print("Waiting for depressurization: ", leg)
+                    print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
+                    time.sleep(0.01)
 
                 # 3 second delay before next leg
                 print(f"Waiting 3 seconds before next leg...\n")
