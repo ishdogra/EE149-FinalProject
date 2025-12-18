@@ -441,6 +441,8 @@ class TwoFTwoBActuator:
             if leg == 0 or leg == 3:
                 lift_delta = 4
                 extend_delta = -21
+            if leg == 3:
+                extend_delta = -18
             else:
                 lift_delta = -6
                 extend_delta = 21
@@ -502,8 +504,10 @@ class TwoFTwoBActuator:
         lift_mult = directions.get(lift_ch, 1)
         extend_mult = directions.get(ext_ch, 1)
 
-        if leg == 0 or leg == 3:
-             lift_delta, extend_delta = -12, 21
+        if leg == 0:
+            lift_delta, extend_delta = -12, 21
+        elif leg == 3:
+            lift_delta, extend_delta = -12, 18
         elif leg == 1:
             lift_delta, extend_delta = 12, -21
         elif leg == 2:
@@ -556,13 +560,15 @@ class TwoFTwoBActuator:
             extend_mult = directions.get(ext_ch, 1)
 
             if leg == 0 or leg == 3:
-                angle = 20
+                lift_angle = 20
+                extend_angle = 20
             else:
-                angle = 15
+                lift_angle = 12
+                extend_angle = 0
             
             # Apply 15° lift and 15° retract with direction multipliers
-            lift_delta = angle * lift_mult
-            extend_delta = -angle * extend_mult  # negative for retract
+            lift_delta = lift_angle * lift_mult
+            extend_delta = -extend_angle * extend_mult  # negative for retract
             
             tgt_lift = cur_lift + lift_delta
             tgt_extend = cur_extend + extend_delta
@@ -584,6 +590,7 @@ class TwoFTwoBActuator:
             lift_thread.join()
             extend_thread.join()
         
+        self.pneumatics.open_all_valves()
         print("\n✓ Stationed position complete")
         self.print_servo_angles()
 
@@ -653,18 +660,27 @@ class TwoFTwoBActuator:
                 # Step 1: PNEUMATICS DETTACH
                 self.pneumatics.close_valve(self.leg_valve[leg])
                 count = 0
-                while self.transducer.voltage_to_relpressure(leg) < -3 and count > 3: # neg pressure = vacuum
-                    if self.transducer.voltage_to_relpressure(leg) < -3:
+                while count < 3: # Keep looping until pressure > -3 confirmed 3 times
+                    try:
+                        rel_pressure = self.transducer.voltage_to_relpressure(leg)
+                    except:
+                        print("I2C Error")
+                        rel_pressure = -999
+                    if rel_pressure > -3:
                         count += 1
                     else:
-                        count == 0
-                    pressures = self.transducer.read_all_pressures()
+                        count = 0
+                    try:
+                        pressures = self.transducer.read_all_pressures()
+                    except:
+                        print("I2C Error")
+                        pressures = [9999, 9999, 9999, 9999]
                     valve_state = []
                     for x in range(1, 5):
                         valve_state.append(self.pneumatics.get_valve_state(x))
                     print("Waiting for depressurization: ", leg)
                     print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
-                    time.sleep(0.01)
+                    time.sleep(0.1)
                 time.sleep(0.1)
 
                 # Step 2: Lift leg
@@ -685,22 +701,38 @@ class TwoFTwoBActuator:
                     
                 # Step 4: Lower leg back to original lift position
                 print(f"Leg {leg}: Lowering...")
-                if leg == 0 or leg == 3:
-                    self.actuate_lift_motor(leg, -(lift_deg - 10))
+                if leg == 0:
+                    self.actuate_lift_motor(leg, -(lift_deg))
+                elif leg == 3:
+                    self.actuate_lift_motor(leg, -(lift_deg + 10))
                 else:
-                    self.actuate_lift_motor(leg, -(lift_deg)) 
+                    self.actuate_lift_motor(leg, -(lift_deg + 10)) 
                 time.sleep(0.1)
 
                 # Step 5: PNEUMATICS ATTACH
                 self.pneumatics.open_valve(self.leg_valve[leg])
-                while self.transducer.voltage_to_relpressure(leg) > -40: # neg pressure = vacuum
-                    pressures = self.transducer.read_all_pressures()
+                count = 0
+                while count < 3: # Keep looping until pressure < -40 confirmed 3 times
+                    try:
+                        rel_pressure = self.transducer.voltage_to_relpressure(leg)
+                    except:
+                        print("I2C Error")
+                        rel_pressure = 999
+                    if rel_pressure < -40:
+                        count += 1
+                    else:
+                        count = 0
+                    try:
+                        pressures = self.transducer.read_all_pressures()
+                    except:
+                        print("I2C Error")
+                        pressures = [9999, 9999, 9999, 9999]
                     valve_state = []
                     for x in range(1, 5):
                         valve_state.append(self.pneumatics.get_valve_state(x))
-                    print("Waiting for depressurization: ", leg)
+                    print("Waiting for pressurization: ", leg)
                     print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
-                    time.sleep(0.01)
+                    time.sleep(0.1)
 
                 # 3 second delay before next leg
                 print(f"Waiting 3 seconds before next leg...\n")

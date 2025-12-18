@@ -116,7 +116,7 @@ class Transducer:
         self.bus.write_i2c_block_data(self.address, REG_CONFIG, config_bytes)
         
         # Wait for conversion (8ms for 128 SPS)
-        time.sleep(0.01)
+        time.sleep(0.1)  # Change to 0.05 or higher
         
         # Read conversion result
         data = self.bus.read_i2c_block_data(self.address, REG_CONVERSION, 2)
