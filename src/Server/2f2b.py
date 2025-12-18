@@ -441,11 +441,11 @@ class TwoFTwoBActuator:
             if leg == 0 or leg == 3:
                 lift_delta = 4
                 extend_delta = -21
-            if leg == 3:
-                extend_delta = -18
             else:
                 lift_delta = -6
                 extend_delta = 21
+            if leg == 3:
+                extend_delta = -18
 
             # Apply direction multipliers
             lift_delta *= lift_mult
@@ -505,7 +505,7 @@ class TwoFTwoBActuator:
         extend_mult = directions.get(ext_ch, 1)
 
         if leg == 0:
-            lift_delta, extend_delta = -12, 21
+            lift_delta, extend_delta = -12, 18
         elif leg == 3:
             lift_delta, extend_delta = -12, 18
         elif leg == 1:
@@ -546,13 +546,14 @@ class TwoFTwoBActuator:
         """
         print("\nActuating to stationed position...")
         print("Lifting and retracting each leg by 15°\n")
-        
+        calib = self.load_calibration(self.calib_file)
+
         for leg in range(4):
             hip, lift_ch, ext_ch = self.legs[leg]
             
-            # Get current positions from servo
-            cur_lift = float(self.current_angles[lift_ch])
-            cur_extend = float(self.current_angles[ext_ch])
+            # Get calibration positions from servo
+            cur_lift = float(calib[lift_ch])
+            cur_extend = float(calib[ext_ch])
             
             # Load direction multipliers
             directions = self.load_servo_directions()
@@ -737,6 +738,8 @@ class TwoFTwoBActuator:
                 # 3 second delay before next leg
                 print(f"Waiting 3 seconds before next leg...\n")
                 time.sleep(1)
+
+            self.actuate_to_stationed_position()    
         
         print("✓ Ripple gait complete")
         self.print_servo_angles()
