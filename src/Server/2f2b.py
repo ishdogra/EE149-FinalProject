@@ -661,7 +661,7 @@ class TwoFTwoBActuator:
                 # Step 1: PNEUMATICS DETTACH
                 self.pneumatics.close_valve(self.leg_valve[leg])
                 count = 0
-                while count < 3: # Keep looping until pressure > -3 confirmed 3 times
+                while count < 2: # Keep looping until pressure > -3 confirmed 3 times
                     try:
                         rel_pressure = self.transducer.voltage_to_relpressure(leg)
                     except:
@@ -703,7 +703,7 @@ class TwoFTwoBActuator:
                 # Step 4: Lower leg back to original lift position
                 print(f"Leg {leg}: Lowering...")
                 if leg == 0:
-                    self.actuate_lift_motor(leg, -(lift_deg))
+                    self.actuate_lift_motor(leg, -(lift_deg + 3))
                 elif leg == 3:
                     self.actuate_lift_motor(leg, -(lift_deg + 10))
                 else:
@@ -713,7 +713,7 @@ class TwoFTwoBActuator:
                 # Step 5: PNEUMATICS ATTACH
                 self.pneumatics.open_valve(self.leg_valve[leg])
                 count = 0
-                while count < 3: # Keep looping until pressure < -40 confirmed 3 times
+                while count < 2: # Keep looping until pressure < -40 confirmed 3 times
                     try:
                         rel_pressure = self.transducer.voltage_to_relpressure(leg)
                     except:
