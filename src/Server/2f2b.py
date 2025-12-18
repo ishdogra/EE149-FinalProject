@@ -1,7 +1,9 @@
 import time
 import math
 import threading
-from typing import Dict, List
+from typing import Dict, List, Mapping
+from pnuematics import PnuematicsController
+from transducer import Transducer
 
 try:
     from servo import Servo
@@ -12,6 +14,20 @@ except Exception:
         def set_servo_angle(self, ch, ang, speed=None): self.current_angles[int(ch)] = float(ang)
         def relax(self): pass
 
+DEFAULT_LEG_TO_VALVE: Mapping[int, int] = {
+    0: 1,  # front right -> valve 1
+    1: 2,  # back right  -> valve 2
+    2: 3,  # back left  -> valve 3
+    3: 4,  # front left  -> valve 4
+}
+
+# DEFAULT_LEG_TO_SERVO: Mapping[int, int] = {
+#     0: 14,  # front right -> valve 1
+#     1: 8,  # back right  -> valve 2
+#     2: 23,  # back left  -> valve 3
+#     3: 17,  # front left  -> valve 4
+# }
+
 class TwoFTwoBActuator:
     """
     Simple direct-servo actuator for the 2-front / 2-back unilateral "worm" gait.
@@ -19,6 +35,8 @@ class TwoFTwoBActuator:
     """
 
     def __init__(self, servo: Servo = None):
+        self.pneumatics = PnuematicsController()
+        self.transducer = Transducer()
         self.servo = servo if servo is not None else Servo()
         # channels: leg -> (hip_inner, lift, extend)
         self.legs = {
@@ -30,6 +48,10 @@ class TwoFTwoBActuator:
         self.calib_file = 'servo_calibration.txt'
         # Track all servo angles locally
         self.current_angles = [90.0] * 32
+        # Track stationed position angles for clamping reference
+        self.stationed_angles = {}
+        self.leg_valve = dict(DEFAULT_LEG_TO_VALVE)
+        # self.leg_servo = DEFAULT_LEG_TO_SERVO
 
     def _get_positions(self, channels: List[int]) -> Dict[int, float]:
         return {ch: float(self.current_angles[ch]) for ch in channels}
@@ -40,6 +62,16 @@ class TwoFTwoBActuator:
         self.servo.set_servo_angle(channel, angle)
         # Store angle in local tracking
         self.current_angles[int(channel)] = angle
+
+    def print_servo_angles(self):
+        """Print current servo angles for lift and extend motors for each leg."""
+        print("\n--- Current Servo Angles ---")
+        for leg in range(4):
+            hip, lift_ch, ext_ch = self.legs[leg]
+            lift_angle = float(self.current_angles[lift_ch])
+            extend_angle = float(self.current_angles[ext_ch])
+            print(f"Leg {leg}: Lift={lift_angle:.1f}°, Extend={extend_angle:.1f}°")
+        print("---\n")
 
     def calibrate_servo_directions(self, save_path: str = 'servo_directions.txt'):
         """
@@ -293,30 +325,35 @@ class TwoFTwoBActuator:
 
     def _clamp_servo_angle(self, ch: int, angle: float) -> float:
         """
-        Clamp servo angle to ±45° of its calibrated position.
+        Clamp servo angle to ±45° of its reference position.
+        Uses stationed position if available, otherwise uses calibration.
         """
-        calib = self.load_calibration()
-        base_angle = calib.get(ch, 90.0)
-        min_angle = max(0.0, base_angle - 45.0)
-        max_angle = min(180.0, base_angle + 45.0)
+        # Use stationed position as reference if available, otherwise calibration
+        if self.stationed_angles:
+            base_angle = self.stationed_angles.get(ch, 90.0)
+        else:
+            calib = self.load_calibration()
+            base_angle = calib.get(ch, 90.0)
+        
+        min_angle = max(0.0, base_angle - 120.0)
+        max_angle = min(180.0, base_angle + 120.0)
         return max(min_angle, min(max_angle, angle))
 
-    def compute_ik_displacement(self, displacement_mm: float,
+    def compute_ik_displacement(self, leg: int, displacement_mm: float,
                                lift_link_mm: float = 90.0,
                                extend_link_mm: float = 84.0) -> tuple:
         """
         Compute IK angle deltas for a 2-DOF arm moving along the X-axis.
         
-        Initial configuration:
-        - Lift arm (L1=90mm): points to +X (θ1_calib = 0°)
-        - Extend arm (L2=84mm): points to -Y (θ2_calib = -90°)
-        - End effector at (90, -84)
+        Uses current servo angles to compute the initial end effector position,
+        then solves for target position (current + displacement).
         
         Forward kinematics:
         - x = L1*cos(θ1) + L2*cos(θ1 + θ2)
         - y = L1*sin(θ1) + L2*sin(θ1 + θ2)
         
         Args:
+            leg: Leg index to read current angles from
             displacement_mm: Desired displacement along +X axis
             lift_link_mm: Length of lift arm (90mm)
             extend_link_mm: Length of extend arm (84mm)
@@ -324,17 +361,26 @@ class TwoFTwoBActuator:
         Returns:
             (lift_angle_delta, extend_angle_delta) in degrees
         """
-        # Calibrated angles (in radians)
-        theta1_calib = 0.0  # Lift arm points to +X
-        theta2_calib = -math.pi / 2.0  # Extend arm points to -Y relative to lift
+        # Get current angles for this leg (in degrees, convert to radians)
+        hip, lift_ch, ext_ch = self.legs[leg]
+        theta1_current_deg = float(self.current_angles[lift_ch])
+        theta2_current_deg = float(self.current_angles[ext_ch])
         
-        # Initial end effector position
-        x_init = lift_link_mm * math.cos(theta1_calib) + extend_link_mm * math.cos(theta1_calib + theta2_calib)
-        y_init = lift_link_mm * math.sin(theta1_calib) + extend_link_mm * math.sin(theta1_calib + theta2_calib)
+        # Convert to radians for calculations
+        theta1_current = theta1_current_deg * (math.pi / 180.0)
+        theta2_current = theta2_current_deg * (math.pi / 180.0)
+        
+        # Compute initial end effector position from current angles
+        x_init = lift_link_mm * math.cos(theta1_current) + extend_link_mm * math.cos(theta1_current + theta2_current)
+        y_init = lift_link_mm * math.sin(theta1_current) + extend_link_mm * math.sin(theta1_current + theta2_current)
         
         # Target end effector position (move along X axis)
         x_target = x_init + displacement_mm
         y_target = y_init
+        
+        # Debug output
+        print(f"  [IK Debug] Leg {leg}: x_init={x_init:.1f}, y_init={y_init:.1f}")
+        print(f"  [IK Debug] Target: x={x_target:.1f}, y={y_target:.1f}")
         
         # Compute distance from origin to target
         r_squared = x_target**2 + y_target**2
@@ -360,17 +406,83 @@ class TwoFTwoBActuator:
         B = extend_link_mm * math.sin(theta2)
         theta1 = math.atan2(y_target, x_target) - math.atan2(B, A)
         
-        # Compute angle deltas
-        delta_theta1 = theta1 - theta1_calib
-        delta_theta2 = theta2 - theta2_calib
+        # Compute angle deltas from current angles
+        delta_theta1 = theta1 - theta1_current
+        delta_theta2 = theta2 - theta2_current
         
         # Convert from radians to degrees
         lift_angle_delta = delta_theta1 * (180.0 / math.pi)
         extend_angle_delta = delta_theta2 * (180.0 / math.pi)
         
+        # Verify Y position was maintained (debug)
+        y_final = lift_link_mm * math.sin(theta1) + extend_link_mm * math.sin(theta1 + theta2)
+        print(f"  [IK Debug] Solved: theta1={theta1*180/math.pi:.1f}°, theta2={theta2*180/math.pi:.1f}°")
+        print(f"  [IK Debug] Y final: {y_final:.1f} (target was {y_target:.1f}, drift={y_final-y_target:.1f})")
+        
         return (lift_angle_delta, extend_angle_delta)
 
-    def actuate_leg_displacement(self, leg: int, displacement_mm: float, hold: float = 0.0):
+    def push_pull(self):
+        
+        lift_targets = {}
+        extend_targets = {}
+
+        for leg in [0, 2, 3]:
+            _, lift_ch, ext_ch = self.legs[leg]
+            
+            # Read current angles fresh from servo
+            cur_lift = float(self.current_angles[lift_ch])
+            cur_extend = float(self.current_angles[ext_ch])
+            
+            # Load direction multipliers
+            directions = self.load_servo_directions()
+            lift_mult = directions.get(lift_ch, 1)
+            extend_mult = directions.get(ext_ch, 1)
+            
+            if leg == 0 or leg == 3:
+                lift_delta = 4
+                extend_delta = -21
+            else:
+                lift_delta = -6
+                extend_delta = 21
+
+            # Apply direction multipliers
+            lift_delta *= lift_mult
+            extend_delta *= extend_mult
+            
+            tgt_lift = cur_lift + lift_delta
+            tgt_extend = cur_extend + extend_delta
+            
+            tgt_lift = self._clamp_servo_angle(lift_ch, tgt_lift)
+            tgt_extend = self._clamp_servo_angle(ext_ch, tgt_extend)
+
+            lift_targets[lift_ch] = tgt_lift
+            extend_targets[ext_ch] = tgt_extend
+            
+            # print(f"Leg {leg}: displacement={displacement_mm}mm")
+            print(f"  Current: lift={cur_lift:.1f}°, extend={cur_extend:.1f}°")
+            print(f"  Target: lift={tgt_lift:.1f}°, extend={tgt_extend:.1f}°")
+        
+        # Create and start all threads
+        threads = []
+        for lift_ch in lift_targets:
+            lift_thread = threading.Thread(target=self._actuate_servo, args=(lift_ch, lift_targets[lift_ch]))
+            threads.append(lift_thread)
+        
+        for ext_ch in extend_targets:
+            extend_thread = threading.Thread(target=self._actuate_servo, args=(ext_ch, extend_targets[ext_ch]))
+            threads.append(extend_thread)
+        
+        # Start all threads
+        for thread in threads:
+            thread.start()
+        
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+        
+        self.print_servo_angles()
+
+    def reach(self, leg: int):
         """
         Actuate lift and extend servos simultaneously using threading.
         Applies saved direction multipliers to ensure correct motion.
@@ -385,12 +497,17 @@ class TwoFTwoBActuator:
         cur_lift = float(self.current_angles[lift_ch])
         cur_extend = float(self.current_angles[ext_ch])
         
-        lift_delta, extend_delta = self.compute_ik_displacement(displacement_mm)
-        
         # Load direction multipliers
         directions = self.load_servo_directions()
         lift_mult = directions.get(lift_ch, 1)
         extend_mult = directions.get(ext_ch, 1)
+
+        if leg == 0 or leg == 3:
+             lift_delta, extend_delta = -12, 21
+        elif leg == 1:
+            lift_delta, extend_delta = 12, -21
+        elif leg == 2:
+            lift_delta, extend_delta = 6, -18
         
         # Apply direction multipliers
         lift_delta *= lift_mult
@@ -402,7 +519,7 @@ class TwoFTwoBActuator:
         tgt_lift = self._clamp_servo_angle(lift_ch, tgt_lift)
         tgt_extend = self._clamp_servo_angle(ext_ch, tgt_extend)
         
-        print(f"Leg {leg}: displacement={displacement_mm}mm")
+        print(f"Leg {leg}")
         print(f"  Current: lift={cur_lift:.1f}°, extend={cur_extend:.1f}°")
         print(f"  Target: lift={tgt_lift:.1f}°, extend={tgt_extend:.1f}°")
         
@@ -415,12 +532,11 @@ class TwoFTwoBActuator:
         lift_thread.join()
         extend_thread.join()
         
-        if hold > 0:
-            time.sleep(hold)
+        self.print_servo_angles()
 
-    def actuate_to_stationed_position(self, angle, hold: float = 0.3):
+    def actuate_to_stationed_position(self):
         """
-        Actuate robot to stationed position by lifting each leg 15° and retracting it 15°.
+        Actuate robot to stationed position by lifting each leg and retracting it .
         Lifts and retracts are applied simultaneously per leg using threading.
         Uses current servo angles, not calibration file.
         """
@@ -438,6 +554,11 @@ class TwoFTwoBActuator:
             directions = self.load_servo_directions()
             lift_mult = directions.get(lift_ch, 1)
             extend_mult = directions.get(ext_ch, 1)
+
+            if leg == 0 or leg == 3:
+                angle = 20
+            else:
+                angle = 15
             
             # Apply 15° lift and 15° retract with direction multipliers
             lift_delta = angle * lift_mult
@@ -462,10 +583,9 @@ class TwoFTwoBActuator:
             extend_thread.start()
             lift_thread.join()
             extend_thread.join()
-            
-            time.sleep(hold)
         
         print("\n✓ Stationed position complete")
+        self.print_servo_angles()
 
     def actuate_lift_motor(self, leg: int, lift_degrees: float):
         """
@@ -501,9 +621,10 @@ class TwoFTwoBActuator:
             self._actuate_servo(lift_ch, tgt_lift)
         except Exception as e:
             print(f"Error actuating lift motor on leg {leg}: {e}")
+        
+        self.print_servo_angles()
 
-    def ripple_gait(self, lift_deg: float = 30.0, displacement_mm: float = 30.0, 
-                    hold_lift: float = 0.2, hold_extend: float = 0.2, hold_lower: float = 0.2):
+    def ripple_gait(self, lift_deg: float = 30.0, displacement_mm: float = 30.0):
         """
         Perform a ripple gait sequence in order [0, 2, 1, 3].
         For each leg: lift -> displace forward -> lower.
@@ -511,44 +632,77 @@ class TwoFTwoBActuator:
         Args:
             lift_deg: Degrees to lift each leg (default 30°)
             displacement_mm: Forward displacement distance (default 30mm)
-            hold_lift: Time to hold after lifting (seconds)
-            hold_extend: Time to hold after extending (seconds)
-            hold_lower: Time to hold after lowering (seconds)
         """
-        order = [0, 2, 1, 3]
+        order = [0, 2, 3, 1]
         
         print("\n=== Ripple Gait ===")
         print(f"Lift: {lift_deg}°, Displacement: {displacement_mm}mm\n")
-        
-        for leg in order:
-            hip, lift_ch, ext_ch = self.legs[leg]
-            
-            # Read current angles fresh from servo
-            orig_lift = float(self.current_angles[lift_ch])
-            orig_extend = float(self.current_angles[ext_ch])
-            
-            # Step 1: Lift leg
-            print(f"Leg {leg}: Lifting {lift_deg}°...")
-            self.actuate_lift_motor(leg, lift_deg)
-            time.sleep(hold_lift)
-            
-            # Step 2: Displace forward using IK
-            print(f"Leg {leg}: Displacing {displacement_mm}mm...")
-            if leg == 0 or leg == 3:
-                self.actuate_leg_displacement(leg, displacement_mm, hold=hold_extend)
-            elif leg == 1 or leg == 2:
-                self.actuate_leg_displacement(leg, -displacement_mm, hold=hold_extend)
-            
-            # # Step 3: Lower leg back to original lift position
-            # print(f"Leg {leg}: Lowering...")
-            # self.actuate_lift_motor(leg, orig_lift - float(self.current_angles[lift_ch]))
-            # time.sleep(hold_lower)
-            
-            # 2 second delay before next leg
-            print(f"Waiting 2 seconds before next leg...\n")
-            time.sleep(2.0)
+
+        print("\nOpening Valves!!!")
+        self.pneumatics.open_all_valves()
+
+        for _ in range(5):
+            for leg in order:
+
+                _, lift_ch, ext_ch = self.legs[leg]
+                
+                # Read current angles fresh from servo
+                orig_lift = float(self.current_angles[lift_ch])
+                orig_extend = float(self.current_angles[ext_ch])
+
+                # Step 1: PNEUMATICS DETTACH
+                self.pneumatics.close_valve(self.leg_valve[leg])
+                # while self.transducer.voltage_to_relpressure(leg) < -3: # neg pressure = vacuum
+                pressures = self.transducer.read_all_pressures()
+                valve_state = []
+                for x in range(1, 5):
+                    valve_state.append(self.pneumatics.get_valve_state(x))
+                print("Waiting for depressurization: ", leg)
+                print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
+                    # time.sleep(0.01)
+                time.sleep(0.1)
+
+                # Step 2: Lift leg
+                print(f"Leg {leg}: Lifting {lift_deg}°...")
+                self.actuate_lift_motor(leg, lift_deg)
+                time.sleep(0.1)
+
+                if leg == 1:
+                    # Push pull
+                    print(f"Leg {leg}: Pushing/pulling...")
+                    self.push_pull()
+                    time.sleep(0.1)
+                else:
+                    # Step 3: Displace forward using IK
+                    print(f"Leg {leg}: Displacing {displacement_mm}mm...")
+                    self.reach(leg)
+                    time.sleep(0.1)
+                    
+                # Step 4: Lower leg back to original lift position
+                print(f"Leg {leg}: Lowering...")
+                if leg == 0 or leg == 3:
+                    self.actuate_lift_motor(leg, -(lift_deg - 10))
+                else:
+                    self.actuate_lift_motor(leg, -(lift_deg)) 
+                time.sleep(0.1)
+
+                # Step 5: PNEUMATICS ATTACH
+                self.pneumatics.open_valve(self.leg_valve[leg])
+                # while self.transducer.voltage_to_relpressure(leg) > -40: # neg pressure = vacuum
+                pressures = self.transducer.read_all_pressures()
+                valve_state = []
+                for x in range(1, 5):
+                    valve_state.append(self.pneumatics.get_valve_state(x))
+                print("Waiting for depressurization: ", leg)
+                print("valve state", valve_state, "pressures", [f"{p:.1f}" for p in pressures])
+                    # time.sleep(0.01)
+
+                # 3 second delay before next leg
+                print(f"Waiting 3 seconds before next leg...\n")
+                time.sleep(1)
         
         print("✓ Ripple gait complete")
+        self.print_servo_angles()
 
 def main():
     act = TwoFTwoBActuator()
@@ -572,7 +726,7 @@ def main():
             elif choice == "3":
                 act.actuate_to_calibration()
             elif choice == "4":
-                act.actuate_to_stationed_position(30.0)
+                act.actuate_to_stationed_position()
             elif choice == "5":
                 chans = input("Channels to scan (comma list or blank for 0-31): ").strip()
                 if chans:
